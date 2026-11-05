@@ -1,5 +1,5 @@
 use crate::cache::Height;
-use crate::clients::electrum_url::ElectrumUrl;
+use crate::clients::electrum_url::{parse_electrum_url, ElectrumUrl};
 use crate::clients::TokenProvider;
 use crate::Error;
 use crate::History;
@@ -61,14 +61,14 @@ impl ElectrumClient {
     /// provider, use [`ElectrumClientBuilder`].
     // TODO: deprecate in favour of ElectrumClientBuilder.
     pub fn new(url: &ElectrumUrl) -> Result<Self, Error> {
-        ElectrumClientBuilder::new(&url.to_string()).build()
+        url.client_builder().build()
     }
 
     /// Creates an Electrum client specifying non default options like timeout.
     #[deprecated(note = "use ElectrumClientBuilder instead")]
     #[allow(deprecated)]
     pub fn with_options(url: &ElectrumUrl, options: ElectrumOptions) -> Result<Self, Error> {
-        let mut builder = ElectrumClientBuilder::new(&url.to_string());
+        let mut builder = url.client_builder();
         if let Some(timeout) = options.timeout {
             builder = builder.timeout(Duration::from_secs(timeout as u64));
         }
@@ -160,6 +160,7 @@ pub struct ElectrumClientBuilder {
     timeout: Option<Duration>,
     token_provider: TokenProvider,
     allow_plaintext_with_token: bool,
+    validate_domain: bool,
 }
 
 impl ElectrumClientBuilder {
@@ -171,6 +172,7 @@ impl ElectrumClientBuilder {
             timeout: None,
             token_provider: TokenProvider::None,
             allow_plaintext_with_token: false,
+            validate_domain: true,
         }
     }
 
@@ -219,9 +221,29 @@ impl ElectrumClientBuilder {
         self
     }
 
+    /// Set whether a TLS (`ssl://`) connection verifies the server certificate, `true` by
+    /// default. Plaintext (`tcp://`) urls ignore it.
+    ///
+    /// Setting `false` allows a server with a self-signed certificate, or a TLS url with an
+    /// IP address as host (e.g. `ssl://192.168.1.10:50002`), which is otherwise rejected.
+    ///
+    /// Security:
+    /// - With the rustls backend used by this crate, `false` disables the verification of
+    ///   the server certificate entirely, not only the match with the host name: the
+    ///   connection is encrypted but the server is not authenticated, so anyone able to
+    ///   intercept it can impersonate the server and see or alter the wallet's requests and
+    ///   their answers. Use it only for a server reached through a network path you trust.
+    /// - A token set with [`Self::token_provider`] is sent to whoever answers, so an
+    ///   interceptor can capture it. `false` does not allow sending a token over a plaintext
+    ///   connection, which still requires [`Self::allow_plaintext_with_token`].
+    pub fn validate_domain(mut self, validate: bool) -> Self {
+        self.validate_domain = validate;
+        self
+    }
+
     /// Build the [`ElectrumClient`], opening the connection.
     pub fn build(self) -> Result<ElectrumClient, Error> {
-        let url: ElectrumUrl = self.url.parse()?;
+        let url = parse_electrum_url(&self.url, self.validate_domain)?;
         if matches!(url, ElectrumUrl::Plaintext(_))
             && !matches!(self.token_provider, TokenProvider::None)
             && !self.allow_plaintext_with_token
@@ -341,6 +363,16 @@ impl From<GetHistoryRes> for History {
 }
 
 impl ElectrumUrl {
+    /// A builder for this url. The domain validation flag of a TLS url is passed explicitly
+    /// because the url's string form cannot carry it.
+    fn client_builder(&self) -> ElectrumClientBuilder {
+        let validate_domain = match self {
+            ElectrumUrl::Tls(_, validate_domain) => *validate_domain,
+            ElectrumUrl::Plaintext(_) => true,
+        };
+        ElectrumClientBuilder::new(&self.to_string()).validate_domain(validate_domain)
+    }
+
     /// Build an Electrum client from the url and options.
     #[deprecated(note = "use ElectrumClientBuilder instead")]
     #[allow(deprecated)]

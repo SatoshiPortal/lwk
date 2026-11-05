@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+* Add `ElectrumClientBuilder::validate_domain()` to connect over TLS to a server with a self-signed certificate or an IP address as host. `false` disables the verification of the server certificate: the server is no longer authenticated.
+* Fix `ElectrumClient::new()` and `ElectrumClient::with_options()` ignoring the `validate_domain = false` of an `ElectrumUrl` built with `ElectrumUrl::new()`, and rejecting such a url with an IP address as host, a regression in 0.19.0.
+
 ## 0.20.0
 
 * Breaking: update to `elements` 0.27 and `elements-miniscript` 0.5. Types re-exported from `elements` changed, for example the hex helpers (`ToHex`, `FromHex`), `AssetId` and `Txid` constructors, the issuance entropy (now `AssetEntropy`) and the pegin witness.

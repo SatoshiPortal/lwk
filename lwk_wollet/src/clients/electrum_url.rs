@@ -16,27 +16,32 @@ impl FromStr for ElectrumUrl {
     type Err = crate::UrlError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let url: url::Url = s.parse()?;
-        let ssl = url.scheme() == "ssl";
-        if !(ssl || url.scheme() == "tcp") {
-            return Err(crate::UrlError::Schema(url.scheme().to_string()));
+        parse_electrum_url(s, true)
+    }
+}
+
+/// Parse an Electrum url like [`ElectrumUrl::from_str`], with the given domain validation
+/// flag for a TLS url. Without validation, a TLS url may have an IP address as host.
+pub(crate) fn parse_electrum_url(
+    s: &str,
+    validate_domain: bool,
+) -> Result<ElectrumUrl, crate::UrlError> {
+    let url: url::Url = s.parse()?;
+    let ssl = url.scheme() == "ssl";
+    if !(ssl || url.scheme() == "tcp") {
+        return Err(crate::UrlError::Schema(url.scheme().to_string()));
+    }
+    if url.port().is_none() {
+        return Err(crate::UrlError::MissingPort);
+    }
+    match url.domain() {
+        Some(domain) => {
+            if ssl && validate_domain && domain.parse::<IpAddr>().is_ok() {
+                return Err(crate::UrlError::SslWithoutDomain);
+            }
+            ElectrumUrl::new(&s[6..], ssl, ssl && validate_domain)
         }
-        if url.port().is_none() {
-            return Err(crate::UrlError::MissingPort);
-        }
-        match url.domain() {
-            Some(domain) => match domain.parse::<IpAddr>() {
-                Ok(_) => {
-                    if ssl {
-                        Err(crate::UrlError::SslWithoutDomain)
-                    } else {
-                        ElectrumUrl::new(&s[6..], false, false)
-                    }
-                }
-                Err(_) => ElectrumUrl::new(&s[6..], ssl, ssl),
-            },
-            None => Err(crate::UrlError::MissingDomain),
-        }
+        None => Err(crate::UrlError::MissingDomain),
     }
 }
 
