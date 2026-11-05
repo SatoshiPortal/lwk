@@ -844,4 +844,36 @@ mod tests {
             "expected an error when a token is set on a plaintext connection without opt-in"
         );
     }
+
+    #[test]
+    fn electrum_tls_domain_validation_flag() {
+        #[allow(deprecated)]
+        use super::{ElectrumClient, ElectrumClientBuilder, ElectrumOptions};
+        use crate::{Error, UrlError};
+
+        // A TLS url on an IP host is refused by default: the domain cannot be validated.
+        let err = ElectrumClientBuilder::new("ssl://127.0.0.1:1")
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::Url(UrlError::SslWithoutDomain)),
+            "{err:?}"
+        );
+
+        // Without domain validation it is accepted and the client tries to connect (nothing
+        // listens on port 1), through the builder and through the deprecated constructors.
+        let url = ElectrumUrl::new("127.0.0.1:1", true, false).unwrap();
+        #[allow(deprecated)]
+        let results = [
+            ElectrumClientBuilder::new("ssl://127.0.0.1:1")
+                .validate_domain(false)
+                .build(),
+            ElectrumClient::new(&url),
+            ElectrumClient::with_options(&url, ElectrumOptions::default()),
+        ];
+        for result in results {
+            let err = result.unwrap_err();
+            assert!(!matches!(err, Error::Url(_)), "{err:?}");
+        }
+    }
 }
