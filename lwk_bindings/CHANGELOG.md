@@ -3,6 +3,8 @@
 ## Unreleased
 
 * Breaking: If a PSET has a non-default sighash, `Signer.sign()` and `SecretKey.sign()` now return an error. To sign with non-default sighashes, pass `SignOptions.allow_sighash_single_anyonecanpay()` or `SignOptions.dangerous_allow_any_sighash()` to `Signer.sign_with_options()`
+* Add `validate_domain` to `ElectrumClientBuilder`, `true` by default, to connect over TLS to a server with a self-signed certificate or an IP address as host. `false` disables the verification of the server certificate: the server is no longer authenticated.
+* Fix `ElectrumClient(url, tls, validate_domain)` ignoring `validate_domain=false` and rejecting a TLS url with an IP address as host, a regression in 0.19.0.
 
 ## 0.20.0
 

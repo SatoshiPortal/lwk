@@ -34,6 +34,11 @@ pub struct ElectrumClientBuilder {
     /// `tcp://` url is refused.
     #[uniffi(default = false)]
     allow_plaintext_with_token: bool,
+    /// Verify the server certificate of a TLS (`ssl://`) url. `false` allows a self-signed
+    /// certificate or an IP address as host, but the server is then not authenticated: anyone
+    /// able to intercept the connection can impersonate it and capture a token. On by default.
+    #[uniffi(default = true)]
+    validate_domain: bool,
 }
 
 impl From<ElectrumClientBuilder> for lwk_wollet::ElectrumClientBuilder {
@@ -48,7 +53,7 @@ impl From<ElectrumClientBuilder> for lwk_wollet::ElectrumClientBuilder {
         if builder.allow_plaintext_with_token {
             result = result.allow_plaintext_with_token(true);
         }
-        result
+        result.validate_domain(builder.validate_domain)
     }
 }
 
@@ -63,7 +68,8 @@ impl ElectrumClient {
     ) -> Result<Arc<Self>, LwkError> {
         let url = lwk_wollet::ElectrumUrl::new(electrum_url, tls, validate_domain)
             .map_err(lwk_wollet::Error::Url)?;
-        let builder = lwk_wollet::ElectrumClientBuilder::new(&url.to_string());
+        let builder = lwk_wollet::ElectrumClientBuilder::new(&url.to_string())
+            .validate_domain(validate_domain);
         let client = builder.clone().build()?;
         Ok(Arc::new(Self {
             inner: Arc::new(Mutex::new(client)),
